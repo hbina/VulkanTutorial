@@ -7,7 +7,70 @@
 #include <numeric>
 #include <stdexcept>
 #include <vector>
+#include <functional>
 
+/////////////////////////////////////////////////////
+//////                                         //////
+//////    HELPER TEMPLATE ALGORITHMS           //////
+//////                                         //////
+/////////////////////////////////////////////////////
+
+template<typename OuterIterable, typename InnerIterable, typename BinaryPredicate>
+bool any_of_range(const OuterIterable& outer_iterable, const InnerIterable& inner_iterable, const BinaryPredicate& pred) {
+	for (auto x = 0; x < outer_iterable.size(); x++) {
+		bool found = false;
+		for (auto y = 0; y < inner_iterable.size(); y++) {
+			if (pred(outer_iterable[x], inner_iterable[y])) {
+				found = true;
+				break;
+			}
+		}
+		if (!found) {
+			return false;
+		}
+	}
+	return true;
+}
+
+template<typename OuterIterable, typename InnerIterable>
+bool any_of_range(const OuterIterable& outer_iterable, const InnerIterable& inner_iterable) {
+	return any_of_range(outer_iterable, inner_iterable, std::equal_to{});
+}
+
+///////////////////////////////
+//////                   //////
+//////  VALIDATION LAYERS //////
+//////                   //////
+///////////////////////////////
+
+// List of validation layers we want to have.
+const std::vector<const char*> validationLayers = {
+	"VK_LAYER_KHRONOS_validation"
+};
+
+#ifdef NDEBUG
+const bool enableValidationLayers = false;
+#else
+const bool enableValidationLayers = true;
+#endif
+
+bool checkValidationLayerSupport() {
+	uint32_t layerCount = 0;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+	return any_of_range(validationLayers, availableLayers, [](const char* lhs, const VkLayerProperties& rhs) {
+		return strcmp(lhs, rhs.layerName) == 0;
+		});
+}
+
+///////////////////////////////
+//////                   //////
+//////  VULKAN TUTORIAL  //////
+//////                   //////
+///////////////////////////////
 
 class HelloTriangleApplication {
 	const uint32_t WIDTH = 800;
@@ -53,6 +116,12 @@ private:
 	// library. Creating it involves specifying some details about your
 	// application to the driver.
 	void createInstance() {
+
+		// If validation layer is enabled, check if they are all supported.
+		if (enableValidationLayers && !checkValidationLayerSupport()) {
+			throw std::runtime_error("validation layers requested, but not available!");
+		}
+
 		// Fill in a struct with some information about our application.
 		// This data is technically optional, but it may provide some useful
 		// information to the driver in order to optimize our specific application.
@@ -86,7 +155,8 @@ private:
 		createInfo.ppEnabledExtensionNames = glfwExtensions_raw;
 		createInfo.enabledLayerCount = 0;
 
-		// Move list of GLFW extensions to std::string for ease of use.
+		// GLFW handles all the storage by itself, so we move list of GLFW extensions 
+		// to std::string for ease of use.
 		std::vector<std::string> glfwExtensions;
 		glfwExtensions.reserve(glfwExtensionCount);
 		for (uint32_t i = 0; i < glfwExtensionCount; i++) {
@@ -115,15 +185,10 @@ private:
 		}
 
 		// Checks that extensions required by GLFW are all supported.
-		// FIXME: This is a hot mess...
-		auto checks_all = std::accumulate(
-			std::cbegin(glfwExtensions), std::cend(glfwExtensions), true,
-			[&](bool checks, const std::string& x) {
-				return checks &&
-					std::any_of(std::cbegin(extensions), std::cend(extensions),
-						[&](const VkExtensionProperties& y) {
-							return x == y.extensionName;
-						});
+		auto checks_all = any_of_range(glfwExtensions,
+			extensions,
+			[](const std::string lhs, const VkExtensionProperties& rhs) {
+				return lhs == rhs.extensionName;
 			});
 		if (!checks_all) {
 			throw std::runtime_error("failed to create instance!");

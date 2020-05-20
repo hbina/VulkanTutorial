@@ -223,6 +223,8 @@ class HelloTriangleApplication
   VkInstance instance = VK_NULL_HANDLE;
   VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+  VkDevice device = VK_NULL_HANDLE;
+  VkQueue graphicsQueue = VK_NULL_HANDLE;
 
 public:
   void run()
@@ -246,6 +248,7 @@ private:
 
   void initVulkan()
   {
+    // TODO: This should be a builder pattern.
     createInstance();
     setupDebugMessenger();
     pickPhysicalDevice();
@@ -276,6 +279,7 @@ private:
 
   void cleanup()
   {
+    vkDestroyDevice(device, nullptr);
     // Free validation layer debugger.
     if (ENABLE_VALIDATION_LAYER) {
       DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
@@ -471,7 +475,47 @@ private:
     return indices;
   }
 
-  void createLogicalDevice() {}
+  void createLogicalDevice()
+  {
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    // TODO: Proper error handling.
+    // This operation _may_ fail.
+    queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
+    queueCreateInfo.queueCount = 1;
+    // NOTE: Why does Vulkan decide on using float here?
+    float queuePriority = 1.0f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    // NOTE: For now we don't require anything special from the physical device.
+    // We just let it all default to `VK_FALSE`.
+    // NOTE: Not sure if that works? Because `VK_FALSE` could be 1 for all we
+    // know.
+    VkPhysicalDeviceFeatures deviceFeatures{};
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.queueCreateInfoCount = 1;
+    createInfo.pEnabledFeatures = &deviceFeatures;
+    createInfo.enabledExtensionCount = 0;
+
+    if (ENABLE_VALIDATION_LAYER) {
+      createInfo.enabledLayerCount =
+        static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
+    } else {
+      createInfo.enabledLayerCount = 0;
+    }
+
+    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) !=
+        VK_SUCCESS) {
+      throw std::runtime_error("failed to create logical device!");
+    }
+
+    vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
+  }
 };
 
 int

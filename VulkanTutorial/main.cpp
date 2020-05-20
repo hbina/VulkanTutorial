@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <vector>
 #include <functional>
+#include <cstring>
 
 /////////////////////////////////////////////////////
 //////                                         //////

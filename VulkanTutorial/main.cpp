@@ -7,6 +7,7 @@
 #include <functional>
 #include <iostream>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -24,9 +25,9 @@ any_of_range(const OuterIterable& outer_iterable,
              const InnerIterable& inner_iterable,
              const BinaryPredicate& pred) -> bool
 {
-  for (auto x = 0; x < outer_iterable.size(); x++) {
+  for (std::size_t x = 0; x < outer_iterable.size(); x++) {
     bool found = false;
-    for (auto y = 0; y < inner_iterable.size(); y++) {
+    for (std::size_t y = 0; y < inner_iterable.size(); y++) {
       if (pred(outer_iterable[x], inner_iterable[y])) {
         found = true;
         break;
@@ -138,6 +139,78 @@ getRequiredExtensions() -> std::vector<const char*>
   return extensions;
 }
 
+std::ostream&
+operator<<(std::ostream& os, const VkPhysicalDeviceType& obj)
+{
+  switch (obj) {
+    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_CPU: {
+      os << "VK_PHYSICAL_DEVICE_TYPE_CPU";
+      break;
+    }
+    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: {
+      os << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU";
+      break;
+    }
+    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: {
+      os << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU";
+      break;
+    }
+    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: {
+      os << "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU";
+      break;
+    }
+    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_OTHER: {
+      os << "VK_PHYSICAL_DEVICE_TYPE_OTHER";
+      break;
+    }
+    default: {
+      throw std::runtime_error("Unknown VkPhysicalDeviceType:" + obj);
+    }
+  }
+  return os;
+}
+
+static void
+printDeviceProperties(const VkPhysicalDevice& device)
+{
+  VkPhysicalDeviceProperties deviceProperties{};
+  vkGetPhysicalDeviceProperties(device, &deviceProperties);
+  std::cout << "device apiVersion:" << deviceProperties.apiVersion << "\n";
+  std::cout << "device deviceID:" << deviceProperties.deviceID << "\n";
+  std::cout << "device deviceName:" << deviceProperties.deviceName << "\n";
+  std::cout << "device deviceType:" << deviceProperties.deviceType << "\n";
+  std::cout << "device driverVersion:" << deviceProperties.driverVersion
+            << "\n";
+  // TODO: Implement the overload for this
+  // std::cout << "device limits:" << deviceProperties.limits << "\n";
+  // TODO: Figure out how to print this.
+  // std::cout << "device pipelineCacheUUID:" <<
+  // deviceProperties.pipelineCacheUUID
+  //          << "\n";
+  // TODO: Implement the overload for this
+  // std::cout << "device sparseProperties:" <<
+  // deviceProperties.sparseProperties
+  //          << "\n";
+  std::cout << "device vendorID:" << deviceProperties.vendorID << "\n";
+}
+
+static void
+printDeviceFeatures(VkPhysicalDevice device)
+{
+  VkPhysicalDeviceFeatures deviceFeatures{};
+  vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+  (void)deviceFeatures; // Silence unused warning
+  // TODO: Implement the print here...
+}
+
+// Helper struct to find queue families.
+struct QueueFamilyIndices
+{
+  std::optional<uint32_t> graphicsFamily;
+
+  auto isComplete() const -> bool { return graphicsFamily.has_value(); }
+};
+
 class HelloTriangleApplication
 {
   const uint32_t WIDTH = 800;
@@ -149,6 +222,7 @@ class HelloTriangleApplication
   // Vulkan
   VkInstance instance = VK_NULL_HANDLE;
   VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
+  VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 
 public:
   void run()
@@ -174,6 +248,8 @@ private:
   {
     createInstance();
     setupDebugMessenger();
+    pickPhysicalDevice();
+    createLogicalDevice();
   }
 
   void setupDebugMessenger()
@@ -245,8 +321,8 @@ private:
     createInfo.pApplicationInfo = &appInfo;
 
     // If validation layer is enabled, we have to specify at creation.
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
     if (ENABLE_VALIDATION_LAYER) {
-      VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
       createInfo.enabledLayerCount =
         static_cast<uint32_t>(validationLayers.size());
       createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -313,7 +389,7 @@ private:
     return VK_FALSE;
   }
 
-  void populateDebugMessengerCreateInfo(
+  static void populateDebugMessengerCreateInfo(
     VkDebugUtilsMessengerCreateInfoEXT& createInfo)
   {
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
@@ -328,6 +404,74 @@ private:
     createInfo.pfnUserCallback = debugCallback;
     createInfo.pUserData = nullptr; // Optional
   }
+
+  void pickPhysicalDevice()
+  {
+    uint32_t deviceCount = 0;
+    vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
+
+    if (deviceCount == 0) {
+      throw std::runtime_error("failed to find GPUs with Vulkan support!");
+    }
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
+
+    for (const VkPhysicalDevice& device : devices) {
+      printDeviceProperties(device);
+      printDeviceFeatures(device);
+      if (isDeviceSuitable(device)) {
+        physicalDevice = device;
+        break;
+      }
+    }
+
+    if (physicalDevice == VK_NULL_HANDLE) {
+      throw std::runtime_error("failed to find a suitable GPU!");
+    }
+  }
+
+  static auto isDeviceSuitable(VkPhysicalDevice device) -> bool
+  {
+    // TODO: Implement the checks here...
+    // One idea is to calculate scores and choose only the highest scoring
+    // device. VkPhysicalDeviceProperties deviceProperties{};
+    // VkPhysicalDeviceFeatures deviceFeatures{};
+    // vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    // vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+    return device == VK_NULL_HANDLE ? false
+                                    : findQueueFamilies(device).isComplete();
+  }
+
+  static auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices
+  {
+    QueueFamilyIndices indices;
+    // Assign index to queue families that could be found
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(
+      device, &queueFamilyCount, nullptr);
+
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(
+      device, &queueFamilyCount, queueFamilies.data());
+
+    int i = 0;
+    for (const auto& queueFamily : queueFamilies) {
+      if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+        indices.graphicsFamily = i;
+      }
+
+      if (indices.isComplete()) {
+        break;
+      }
+
+      i++;
+    }
+
+    return indices;
+  }
+
+  void createLogicalDevice() {}
 };
 
 int

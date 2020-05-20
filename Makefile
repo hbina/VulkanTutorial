@@ -1,4 +1,4 @@
-CFLAGS = -std=c++17 -I$(VULKAN_SDK_PATH)/vulkan/include
+CFLAGS = -std=c++20 -I$(VULKAN_SDK_PATH)/vulkan/include -Wall
 LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 
 VulkanTest: VulkanTutorial/main.cpp

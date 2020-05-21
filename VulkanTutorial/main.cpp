@@ -209,6 +209,14 @@ printDeviceFeatures(VkPhysicalDevice device)
   // TODO: Implement the print here...
 }
 
+// Struct for querying details of swap chain support.
+struct SwapChainSupportDetails
+{
+  VkSurfaceCapabilitiesKHR capabilities;
+  std::vector<VkSurfaceFormatKHR> formats;
+  std::vector<VkPresentModeKHR> presentModes;
+};
+
 // Helper struct to find queue families.
 struct QueueFamilyIndices
 {
@@ -237,6 +245,7 @@ class HelloTriangleApplication
   VkQueue graphicsQueue = VK_NULL_HANDLE;
   VkSurfaceKHR surface = VK_NULL_HANDLE;
   VkQueue presentQueue = VK_NULL_HANDLE;
+  VkSwapchainKHR swapChain;
 
 public:
   void run()
@@ -263,8 +272,10 @@ private:
     // TODO: This should be a builder pattern.
     createInstance();
     setupDebugMessenger();
+    createSurface();
     pickPhysicalDevice();
     createLogicalDevice();
+    createSwapChain();
   }
 
   void createSurface()
@@ -299,6 +310,7 @@ private:
 
   void cleanup()
   {
+    vkDestroySwapchainKHR(device, swapChain, nullptr);
     vkDestroyDevice(device, nullptr);
     // Free validation layer debugger.
     if (ENABLE_VALIDATION_LAYER) {
@@ -312,6 +324,41 @@ private:
     // Free GLFW.
     glfwDestroyWindow(window);
     glfwTerminate();
+  }
+
+  // TODO: This should probably be integrated as a builder pattern.
+  // Helper function to populate `SwapChainSupportDetails`
+  SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device)
+  {
+    SwapChainSupportDetails details;
+
+    // Query basic surface capabilities.
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
+      device, surface, &details.capabilities);
+
+    // Query the supported surface formats.
+    uint32_t formatCount = 0;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(
+      device, surface, &formatCount, nullptr);
+
+    if (formatCount != 0) {
+      details.formats.resize(formatCount);
+      vkGetPhysicalDeviceSurfaceFormatsKHR(
+        device, surface, &formatCount, details.formats.data());
+    }
+
+    // Query supported presentations mode.
+    uint32_t presentModeCount = 0;
+    vkGetPhysicalDeviceSurfacePresentModesKHR(
+      device, surface, &presentModeCount, nullptr);
+
+    if (presentModeCount != 0) {
+      details.presentModes.resize(presentModeCount);
+      vkGetPhysicalDeviceSurfacePresentModesKHR(
+        device, surface, &presentModeCount, details.presentModes.data());
+    }
+
+    return details;
   }
 
   // The instance is the connection between your application and the Vulkan
@@ -480,16 +527,155 @@ private:
   {
     // TODO: Implement the checks here...
     // One idea is to calculate scores and choose only the highest scoring
-    // device. VkPhysicalDeviceProperties deviceProperties{};
+    // device.
+    // Some code to get started...
+    // VkPhysicalDeviceProperties deviceProperties{};
     // VkPhysicalDeviceFeatures deviceFeatures{};
     // vkGetPhysicalDeviceProperties(device, &deviceProperties);
     // vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
     QueueFamilyIndices indices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
-    return indices.isComplete() && extensionsSupported;
+
+    // We must require swap chain support.
+    bool swapChainAdequate = false;
+    if (extensionsSupported) {
+      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+      swapChainAdequate = !swapChainSupport.formats.empty() &&
+                          !swapChainSupport.presentModes.empty();
+    }
+
+    return indices.isComplete() && extensionsSupported && swapChainAdequate;
   }
 
-  auto findQueueFamilies(const VkPhysicalDevice& device) -> QueueFamilyIndices
+  // Choose the optimal swap chain.
+  // In particular, we have to consider the following:
+  // 1. Surface format (color depth).
+  // 2. Presentation mode (conditions for "swapping" images to the screen).
+  // 3. Swap extent (resolution of images in swap chain).
+  VkSurfaceFormatKHR chooseSwapSurfaceFormat(
+    const std::vector<VkSurfaceFormatKHR>& availableFormats)
+  {
+    // NOTE: Read about the actual difference betweeen color space and color
+    // format.
+    // Choose SRGB color space:
+    // https://stackoverflow.com/questions/12524623/what-are-the-practical-differences-when-working-with-colors-in-a-linear-vs-a-no
+    // Because of this, we choose SRGB color format
+    for (const auto& availableFormat : availableFormats) {
+      if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
+          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+        return availableFormat;
+      }
+    }
+
+    // TODO: This operation might fail.
+    // Every caller to this function must supply a vector of size at least 1.
+    return availableFormats.front();
+  }
+
+  // Choose available presentation mode.
+  // If possible, we would like to have `VK_PRESENT_MODE_MAILBOX_KHR` to have
+  // triple buffering. Defaults to `VK_PRESENT_MODE_FIFO_KHR` which is
+  // guaranteed to be supported.
+  VkPresentModeKHR chooseSwapPresentMode(
+    const std::vector<VkPresentModeKHR>& availablePresentModes)
+  {
+    for (const VkPresentModeKHR& availablePresentMode : availablePresentModes) {
+      if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+        return availablePresentMode;
+      }
+    }
+
+    return VK_PRESENT_MODE_FIFO_KHR;
+  }
+
+  // Choose the swap extent.
+  // The swap extent is the resolution of the swap chain images and it's almost
+  // always exactly equal to the resolution of the window that we're drawing to.
+  VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+  {
+    if (capabilities.currentExtent.width != UINT32_MAX) {
+      return capabilities.currentExtent;
+    } else {
+      VkExtent2D actualExtent = { WIDTH, HEIGHT };
+
+      // Clamp swap extent between minImageExtend and maxImageExtend
+      actualExtent.width = std::max(
+        capabilities.minImageExtent.width,
+        std::min(capabilities.maxImageExtent.width, actualExtent.width));
+      actualExtent.height = std::max(
+        capabilities.minImageExtent.height,
+        std::min(capabilities.maxImageExtent.height, actualExtent.height));
+
+      return actualExtent;
+    }
+  }
+
+  // Create swap chain.
+  void createSwapChain()
+  {
+    SwapChainSupportDetails swapChainSupport =
+      querySwapChainSupport(physicalDevice);
+
+    VkSurfaceFormatKHR surfaceFormat =
+      chooseSwapSurfaceFormat(swapChainSupport.formats);
+    VkPresentModeKHR presentMode =
+      chooseSwapPresentMode(swapChainSupport.presentModes);
+    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+
+    if (swapChainSupport.capabilities.maxImageCount > 0 &&
+        imageCount > swapChainSupport.capabilities.maxImageCount) {
+      imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
+
+    VkSwapchainCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
+    createInfo.surface = surface;
+    createInfo.minImageCount = imageCount;
+    createInfo.imageFormat = surfaceFormat.format;
+    createInfo.imageColorSpace = surfaceFormat.colorSpace;
+    createInfo.imageExtent = extent;
+    createInfo.imageArrayLayers = 1;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+
+    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(),
+                                      indices.presentFamily.value() };
+
+    if (indices.graphicsFamily != indices.presentFamily) {
+      createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
+      createInfo.queueFamilyIndexCount = 2;
+      createInfo.pQueueFamilyIndices = queueFamilyIndices;
+    } else {
+      createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+      createInfo.queueFamilyIndexCount = 0;     // Optional
+      createInfo.pQueueFamilyIndices = nullptr; // Optional
+    }
+
+    // We do not want any transformation to be applied to the swap chain.
+    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+
+    // We will ignore the composite alpha channel.
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+
+    createInfo.presentMode = presentMode;
+
+    // We don't care about color of pixels that are obscured.
+    // This gives us better performance.
+    createInfo.clipped = VK_TRUE;
+
+    // TODO: For now, we only assume that we will only ever create 1 swap chain.
+    createInfo.oldSwapchain = VK_NULL_HANDLE;
+
+    if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) !=
+        VK_SUCCESS) {
+      throw std::runtime_error("failed to create swap chain!");
+    }
+  }
+
+  auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices
   {
     QueueFamilyIndices indices;
     // Assign index to queue families that could be found
@@ -504,18 +690,22 @@ private:
     // NOTE: add logic to explicitly prefer a physical device that supports
     // drawing and presentation in the same queue for improved performance.
     int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
+    for (const VkQueueFamilyProperties& queueFamily : queueFamilies) {
       if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-        VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(
-          device, i, surface, &presentSupport);
-        if (presentSupport) {
-          indices.graphicsFamily = i;
-        }
+        indices.graphicsFamily = i;
       }
+
+      VkBool32 presentSupport = false;
+      vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+
+      if (presentSupport) {
+        indices.graphicsFamily = i;
+      }
+
       if (indices.isComplete()) {
         break;
       }
+
       i++;
     }
     return indices;
@@ -554,8 +744,9 @@ private:
     createInfo.queueCreateInfoCount =
       static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = 0;
-
+    createInfo.enabledExtensionCount =
+      static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
     if (ENABLE_VALIDATION_LAYER) {
       createInfo.enabledLayerCount =
         static_cast<uint32_t>(validationLayers.size());

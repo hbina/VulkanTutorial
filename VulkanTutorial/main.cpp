@@ -229,10 +229,11 @@ struct QueueFamilyIndices
   }
 };
 
+constexpr uint32_t WIDTH = 800;
+constexpr uint32_t HEIGHT = 600;
+
 class HelloTriangleApplication
 {
-  const uint32_t WIDTH = 800;
-  const uint32_t HEIGHT = 600;
 
   // GLFW
   GLFWwindow* window = nullptr;
@@ -246,6 +247,9 @@ class HelloTriangleApplication
   VkSurfaceKHR surface = VK_NULL_HANDLE;
   VkQueue presentQueue = VK_NULL_HANDLE;
   VkSwapchainKHR swapChain;
+  std::vector<VkImage> swapChainImages;
+  VkFormat swapChainImageFormat;
+  VkExtent2D swapChainExtent;
 
 public:
   void run()
@@ -392,6 +396,16 @@ private:
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
+    // Specify the desired global extensions.
+    // Vulkan is a platform agnostic API, which means that you need an extension
+    // to interface with the window system. GLFW has a handy built-in function
+    // that returns the extension(s) it needs to do that which we can pass to
+    // the struct.
+    auto glfwExtensions = getRequiredExtensions();
+    auto glfwExtensionCount = static_cast<uint32_t>(glfwExtensions.size());
+    createInfo.enabledExtensionCount = glfwExtensionCount;
+    createInfo.ppEnabledExtensionNames = glfwExtensions.data();
+
     // If validation layer is enabled, we have to specify at creation.
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
     if (ENABLE_VALIDATION_LAYER) {
@@ -404,17 +418,6 @@ private:
       createInfo.enabledLayerCount = 0;
       createInfo.pNext = nullptr;
     }
-
-    // Specify the desired global extensions.
-    // Vulkan is a platform agnostic API, which means that you need an extension
-    // to interface with the window system. GLFW has a handy built-in function
-    // that returns the extension(s) it needs to do that which we can pass to
-    // the struct.
-    auto glfwExtensions = getRequiredExtensions();
-    auto glfwExtensionCount = static_cast<uint32_t>(glfwExtensions.size());
-    createInfo.enabledExtensionCount = glfwExtensionCount;
-    createInfo.ppEnabledExtensionNames = glfwExtensions.data();
-    createInfo.enabledLayerCount = 0;
 
     // We've now specified everything Vulkan needs to create an instance.
     // We can finally issue the vkCreateInstance call.
@@ -445,7 +448,7 @@ private:
                      return lhs == rhs.extensionName;
                    });
     if (!checks_all) {
-      throw std::runtime_error("failed to create instance!");
+      throw std::runtime_error("failed obtain all required extensions!");
     }
   }
 
@@ -455,9 +458,7 @@ private:
                 const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
                 void* pUserData)
   {
-
-    std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
+    std::cerr << "validation layer: " << pCallbackData->pMessage << "\n";
     return VK_FALSE;
   }
 
@@ -633,6 +634,7 @@ private:
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = surface;
+
     createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
@@ -673,6 +675,14 @@ private:
         VK_SUCCESS) {
       throw std::runtime_error("failed to create swap chain!");
     }
+
+    vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
+    swapChainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(
+      device, swapChain, &imageCount, swapChainImages.data());
+
+    swapChainImageFormat = surfaceFormat.format;
+    swapChainExtent = extent;
   }
 
   auto findQueueFamilies(const VkPhysicalDevice& device) -> QueueFamilyIndices

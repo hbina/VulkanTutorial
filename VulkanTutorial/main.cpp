@@ -96,7 +96,7 @@ const std::vector<const char*> deviceExtensions = {
 // Helper function to create `VkDebugUtilsMessengerEXT`.
 static auto
 CreateDebugUtilsMessengerEXT(
-  VkInstance instance,
+  const VkInstance& instance,
   const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
   const VkAllocationCallbacks* pAllocator,
   VkDebugUtilsMessengerEXT* pDebugMessenger) -> VkResult
@@ -114,8 +114,8 @@ CreateDebugUtilsMessengerEXT(
 
 // Helper function to find and execute `vkDestroyDebugUtilsMessengerEXT`.
 static void
-DestroyDebugUtilsMessengerEXT(VkInstance instance,
-                              VkDebugUtilsMessengerEXT debugMessenger,
+DestroyDebugUtilsMessengerEXT(const VkInstance& instance,
+                              const VkDebugUtilsMessengerEXT& debugMessenger,
                               const VkAllocationCallbacks* pAllocator)
 {
   auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
@@ -201,7 +201,7 @@ printDeviceProperties(const VkPhysicalDevice& device)
 }
 
 static void
-printDeviceFeatures(VkPhysicalDevice device)
+printDeviceFeatures(const VkPhysicalDevice& device)
 {
   VkPhysicalDeviceFeatures deviceFeatures{};
   vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
@@ -523,7 +523,7 @@ private:
     return requiredExtensions.empty();
   }
 
-  auto isDeviceSuitable(VkPhysicalDevice device) -> bool
+  auto isDeviceSuitable(const VkPhysicalDevice& device) -> bool
   {
     // TODO: Implement the checks here...
     // One idea is to calculate scores and choose only the highest scoring
@@ -675,7 +675,7 @@ private:
     }
   }
 
-  auto findQueueFamilies(VkPhysicalDevice device) -> QueueFamilyIndices
+  auto findQueueFamilies(const VkPhysicalDevice& device) -> QueueFamilyIndices
   {
     QueueFamilyIndices indices;
     // Assign index to queue families that could be found
@@ -699,7 +699,7 @@ private:
       vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
       if (presentSupport) {
-        indices.graphicsFamily = i;
+        indices.presentFamily = i;
       }
 
       if (indices.isComplete()) {

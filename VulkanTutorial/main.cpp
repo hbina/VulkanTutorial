@@ -1,3 +1,6 @@
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -27,6 +30,7 @@
 
 struct Vertex
 {
+  // TODO : Alignment for this?
   glm::vec2 pos;
   glm::vec3 color;
 
@@ -60,9 +64,9 @@ struct Vertex
 
 struct UniformBufferObject
 {
-  glm::mat4 model;
-  glm::mat4 view;
-  glm::mat4 proj;
+  alignas(16) glm::mat4 model;
+  alignas(16) glm::mat4 view;
+  alignas(16) glm::mat4 proj;
 };
 
 /////////////////////////////////////////////////////

@@ -30,9 +30,11 @@ any_of_range(const OuterIterable& outer_iterable,
 }
 
 template<typename OuterIterable, typename InnerIterable>
-static constexpr auto
+static auto
 any_of_range(const OuterIterable& outer_iterable,
              const InnerIterable& inner_iterable) -> bool
 {
-  return any_of_range(outer_iterable, inner_iterable, std::equal_to{});
+  return any_of_range(outer_iterable,
+                      inner_iterable,
+                      std::equal_to<typename OuterIterable::value_type>{});
 }

@@ -34,8 +34,6 @@
 const std::string MODEL_PATH = "assets/viking_room.obj";
 const std::string TEXTURE_PATH = "assets/viking_room.png";
 
-using IndexTy = uint32_t;
-
 // List of validation layers we require.
 const std::vector<const char*> validationLayers = {
   "VK_LAYER_KHRONOS_validation"
@@ -95,7 +93,7 @@ class HelloTriangleApplication
 
   // Buffers
   std::vector<Vertex> vertices;
-  std::vector<IndexTy> indices;
+  std::vector<uint32_t> indices;
   VkBuffer vertexBuffer;
   VkDeviceMemory vertexBufferMemory;
   VkBuffer indexBuffer;
@@ -201,7 +199,7 @@ private:
       throw std::runtime_error(warn + err);
     }
 
-    std::unordered_map<Vertex, uint32_t> uniqueVertices;
+    std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
     for (const auto& shape : shapes) {
       for (const auto& index : shape.mesh.indices) {
@@ -217,18 +215,12 @@ private:
 
         vertex.color = { 1.0f, 1.0f, 1.0f };
 
-#define HASH true
-
-#ifdef HASH
         if (uniqueVertices.count(vertex) == 0) {
           uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
           vertices.emplace_back(vertex);
         }
-#else
-        vertices.emplace_back(vertex);
-#endif
 
-        indices.emplace_back(indices.size());
+        indices.emplace_back(uniqueVertices[vertex]);
       }
     }
   }
@@ -715,7 +707,7 @@ private:
 
   void createIndexBuffer()
   {
-    VkDeviceSize bufferSize = sizeof(IndexTy) * indices.size();
+    VkDeviceSize bufferSize = sizeof(uint32_t) * indices.size();
 
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
     VkDeviceMemory stagingBufferMemory;
@@ -1131,8 +1123,8 @@ private:
 
   void createGraphicsPipeline()
   {
-    auto vertShaderCode = readFile("bin/vert.spv");
-    auto fragShaderCode = readFile("bin/frag.spv");
+    auto vertShaderCode = readFile("build/vert.spv");
+    auto fragShaderCode = readFile("build/frag.spv");
 
     VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
     VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -1653,7 +1645,7 @@ private:
     // to interface with the window system. GLFW has a handy built-in function
     // that returns the extension(s) it needs to do that which we can pass to
     // the struct.
-    auto glfwExtensions = getRequiredExtensions();
+    auto glfwExtensions = getRequiredExtensions(ENABLE_VALIDATION_LAYERS);
     auto glfwExtensionCount = static_cast<uint32_t>(glfwExtensions.size());
     createInfo.enabledExtensionCount = glfwExtensionCount;
     createInfo.ppEnabledExtensionNames = glfwExtensions.data();
@@ -1677,32 +1669,6 @@ private:
     // We can finally issue the vkCreateInstance call.
     if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
       throw std::runtime_error("failed to create instance!");
-    }
-
-    // Request the number of extensions supported.
-    uint32_t extensionCount = 0;
-    vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-
-    std::vector<VkExtensionProperties> extensions(extensionCount);
-    vkEnumerateInstanceExtensionProperties(
-      nullptr, &extensionCount, extensions.data());
-
-    // Print all the supported extensions
-    std::cout << "available extensions:"
-              << "\n";
-    for (const auto& x : extensions) {
-      std::cout << "\t" << x.extensionName << "\n";
-    }
-
-    // Checks that extensions required by GLFW are all supported.
-    auto checks_all = any_of_range(
-      glfwExtensions,
-      extensions,
-      [](const std::string& lhs, const VkExtensionProperties& rhs) {
-        return lhs == rhs.extensionName;
-      });
-    if (!checks_all) {
-      throw std::runtime_error("failed obtain all required extensions!");
     }
   }
 
@@ -1950,7 +1916,7 @@ private:
     createInfo.enabledExtensionCount =
       static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    
+
     if (ENABLE_VALIDATION_LAYERS) {
       createInfo.enabledLayerCount =
         static_cast<uint32_t>(validationLayers.size());

@@ -1,4 +1,5 @@
 bin/
+build/
 .vscode/
 cppcheck-cppcheck-build-dir/
 cppcheck.cppcheck

@@ -29,7 +29,7 @@ operator<<(std::ostream& os, const VkPhysicalDeviceType& obj)
       break;
     }
     default: {
-      throw std::runtime_error("Unknown VkPhysicalDeviceType:" + obj);
+      throw std::runtime_error("Unknown VkPhysicalDeviceType");
     }
   }
   return os;

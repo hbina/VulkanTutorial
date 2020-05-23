@@ -36,21 +36,21 @@ const std::string TEXTURE_PATH = "assets/viking_room.png";
 
 using IndexTy = uint32_t;
 
-// List of validation layers we want to have.
+// List of validation layers we require.
 const std::vector<const char*> validationLayers = {
   "VK_LAYER_KHRONOS_validation"
 };
 
-#ifdef NDEBUG
-#define ENABLE_VALIDATION_LAYERS false
-#else
-#define ENABLE_VALIDATION_LAYERS true
-#endif
-
-// List of device extensions we need.
+// List of device extensions we require.
 const std::vector<const char*> deviceExtensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
+
+#ifdef NDEBUG
+const bool ENABLE_VALIDATION_LAYERS = false;
+#else
+const bool ENABLE_VALIDATION_LAYERS = true;
+#endif
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
@@ -152,8 +152,8 @@ private:
   }
 
   static void framebufferResizeCallback(GLFWwindow* window,
-                                        int width,
-                                        int height)
+                                        const int width,
+                                        const int height)
   {
     auto app = reinterpret_cast<HelloTriangleApplication*>(
       glfwGetWindowUserPointer(window));
@@ -871,8 +871,8 @@ private:
     vkDestroyImage(device, depthImage, nullptr);
     vkFreeMemory(device, depthImageMemory, nullptr);
 
-    for (std::size_t i = 0; i < swapChainFramebuffers.size(); i++) {
-      vkDestroyFramebuffer(device, swapChainFramebuffers[i], nullptr);
+    for (VkFramebuffer framebuffer : swapChainFramebuffers) {
+      vkDestroyFramebuffer(device, framebuffer, nullptr);
     }
 
     vkFreeCommandBuffers(device,
@@ -884,8 +884,8 @@ private:
     vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
     vkDestroyRenderPass(device, renderPass, nullptr);
 
-    for (std::size_t i = 0; i < swapChainImageViews.size(); i++) {
-      vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+    for (auto imageView : swapChainImageViews) {
+      vkDestroyImageView(device, imageView, nullptr);
     }
 
     vkDestroySwapchainKHR(device, swapChain, nullptr);
@@ -903,6 +903,7 @@ private:
 
     // If buffer size is 0, we just pause and no-op
     int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
     while (width == 0 || height == 0) {
       glfwGetFramebufferSize(window, &width, &height);
       glfwWaitEvents();
@@ -1541,9 +1542,6 @@ private:
 
   void cleanup()
   {
-    std::cout << "cleaning up"
-              << "\n";
-
     cleanupSwapChain();
 
     vkDestroySampler(device, textureSampler, nullptr);
@@ -1570,9 +1568,9 @@ private:
     vkDestroyDevice(device, nullptr);
 
     // Free validation layer debugger.
-#ifdef ENABLE_VALIDATION_LAYERS
-    DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-#endif
+    if (ENABLE_VALIDATION_LAYERS) {
+      DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+    }
 
     // Free Vulkan surface and instance.
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -1662,16 +1660,18 @@ private:
 
     // If validation layer is enabled, we have to specify at creation.
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-#ifdef ENABLE_VALIDATION_LAYERS
-    createInfo.enabledLayerCount =
-      static_cast<uint32_t>(validationLayers.size());
-    createInfo.ppEnabledLayerNames = validationLayers.data();
-    populateDebugMessengerCreateInfo(debugCreateInfo);
-    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-#else
-    createInfo.enabledLayerCount = 0;
-    createInfo.pNext = nullptr;
-#endif
+
+    if (ENABLE_VALIDATION_LAYERS) {
+      createInfo.enabledLayerCount =
+        static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
+
+      populateDebugMessengerCreateInfo(debugCreateInfo);
+      createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+    } else {
+      createInfo.enabledLayerCount = 0;
+      createInfo.pNext = nullptr;
+    }
 
     // We've now specified everything Vulkan needs to create an instance.
     // We can finally issue the vkCreateInstance call.
@@ -1704,32 +1704,6 @@ private:
     if (!checks_all) {
       throw std::runtime_error("failed obtain all required extensions!");
     }
-  }
-
-  static VKAPI_ATTR VkBool32 VKAPI_CALL
-  debugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-                VkDebugUtilsMessageTypeFlagsEXT messageType,
-                const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-                void* pUserData)
-  {
-    std::cerr << "validation layer: " << pCallbackData->pMessage << "\n";
-    return VK_FALSE;
-  }
-
-  static void populateDebugMessengerCreateInfo(
-    VkDebugUtilsMessengerCreateInfoEXT& createInfo)
-  {
-    createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-    createInfo.messageSeverity =
-      VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-      VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-      VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT |
-      VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
-    createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-                             VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                             VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-    createInfo.pfnUserCallback = debugCallback;
-    createInfo.pUserData = nullptr; // Optional
   }
 
   void pickPhysicalDevice()
@@ -1976,14 +1950,15 @@ private:
     createInfo.enabledExtensionCount =
       static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-#ifdef ENABLE_VALIDATION_LAYERS
-    createInfo.enabledLayerCount =
-      static_cast<uint32_t>(validationLayers.size());
-    createInfo.ppEnabledLayerNames = validationLayers.data();
-#else
-    createInfo.enabledLayerCount = 0;
-    createInfo.ppEnabledLayerNames = nullptr;
-#endif
+    
+    if (ENABLE_VALIDATION_LAYERS) {
+      createInfo.enabledLayerCount =
+        static_cast<uint32_t>(validationLayers.size());
+      createInfo.ppEnabledLayerNames = validationLayers.data();
+    } else {
+      createInfo.enabledLayerCount = 0;
+      createInfo.ppEnabledLayerNames = nullptr;
+    }
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) !=
         VK_SUCCESS) {

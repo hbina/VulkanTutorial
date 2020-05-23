@@ -14,7 +14,6 @@ cppcheck.cppcheck
 # Object files
 *.o
 *.ko
-*.obj
 *.elf
 
 # Linker output

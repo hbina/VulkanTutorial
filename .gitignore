@@ -1,5 +1,7 @@
 bin/
 .vscode/
+cppcheck-cppcheck-build-dir/
+cppcheck.cppcheck
 
 # Created by https://www.gitignore.io/api/c,c++,visualstudio
 # Edit at https://www.gitignore.io/?templates=c,c++,visualstudio

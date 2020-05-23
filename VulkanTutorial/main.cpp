@@ -4,15 +4,17 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#define GLFW_INCLUDE_VULKAN
+#include <vulkan/vulkan.h>
+
 #include <GLFW/glfw3.h>
 
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/hash.hpp>
+#include "helper_algorithms.hpp"
+#include "ostream_overload.hpp"
+#include "queue_family_indices.hpp"
+#include "static_functions.hpp"
+#include "swapchain_support_details.hpp"
+#include "uniform_buffer_object.hpp"
+#include "vertex.hpp"
 
 #include <algorithm>
 #include <array>
@@ -32,123 +34,7 @@
 const std::string MODEL_PATH = "assets/viking_room.obj";
 const std::string TEXTURE_PATH = "assets/viking_room.png";
 
-/////////////////////////////////////////////////////
-//////                                         //////
-//////                 GLM                     //////
-//////                                         //////
-/////////////////////////////////////////////////////
-
-struct Vertex
-{
-  // TODO : Alignment for this?
-  glm::vec3 pos;
-  glm::vec3 color;
-  glm::vec2 texCoord;
-
-  static VkVertexInputBindingDescription getBindingDescription()
-  {
-    VkVertexInputBindingDescription bindingDescription{};
-    bindingDescription.binding = 0;
-    bindingDescription.stride = sizeof(Vertex);
-    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-    return bindingDescription;
-  }
-
-  static std::array<VkVertexInputAttributeDescription, 3>
-  getAttributeDescriptions()
-  {
-    std::array<VkVertexInputAttributeDescription, 3> attributeDescriptions{};
-
-    attributeDescriptions[0].binding = 0;
-    attributeDescriptions[0].location = 0;
-    attributeDescriptions[0].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[0].offset = offsetof(Vertex, pos);
-
-    attributeDescriptions[1].binding = 0;
-    attributeDescriptions[1].location = 1;
-    attributeDescriptions[1].format = VK_FORMAT_R32G32B32_SFLOAT;
-    attributeDescriptions[1].offset = offsetof(Vertex, color);
-
-    attributeDescriptions[2].binding = 0;
-    attributeDescriptions[2].location = 2;
-    attributeDescriptions[2].format = VK_FORMAT_R32G32_SFLOAT;
-    attributeDescriptions[2].offset = offsetof(Vertex, texCoord);
-
-    return attributeDescriptions;
-  }
-
-  bool operator==(const Vertex& other) const
-  {
-    return pos == other.pos && color == other.color &&
-           texCoord == other.texCoord;
-  }
-};
-
-namespace std {
-template<>
-struct hash<Vertex>
-{
-  size_t operator()(Vertex const& vertex) const
-  {
-    return ((hash<glm::vec3>()(vertex.pos) ^
-             (hash<glm::vec3>()(vertex.color) << 1)) >>
-            1) ^
-           (hash<glm::vec2>()(vertex.texCoord) << 1);
-  }
-};
-}
-
-struct UniformBufferObject
-{
-  alignas(16) glm::mat4 model;
-  alignas(16) glm::mat4 view;
-  alignas(16) glm::mat4 proj;
-};
-
 using IndexTy = uint32_t;
-
-/////////////////////////////////////////////////////
-//////                                         //////
-//////    HELPER TEMPLATE ALGORITHMS           //////
-//////                                         //////
-/////////////////////////////////////////////////////
-
-template<typename OuterIterable,
-         typename InnerIterable,
-         typename BinaryPredicate>
-static constexpr auto
-any_of_range(const OuterIterable& outer_iterable,
-             const InnerIterable& inner_iterable,
-             const BinaryPredicate& pred) -> bool
-{
-  for (std::size_t x = 0; x < outer_iterable.size(); x++) {
-    bool found = false;
-    for (std::size_t y = 0; y < inner_iterable.size(); y++) {
-      if (pred(outer_iterable[x], inner_iterable[y])) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) {
-      return false;
-    }
-  }
-  return true;
-}
-
-template<typename OuterIterable, typename InnerIterable>
-static constexpr auto
-any_of_range(const OuterIterable& outer_iterable,
-             const InnerIterable& inner_iterable) -> bool
-{
-  return any_of_range(outer_iterable, inner_iterable, std::equal_to{});
-}
-
-//////////////////////////////////
-////                          ////
-////    VALIDATION LAYERS     ////
-////                          ////
-//////////////////////////////////
 
 // List of validation layers we want to have.
 const std::vector<const char*> validationLayers = {
@@ -156,193 +42,15 @@ const std::vector<const char*> validationLayers = {
 };
 
 #ifdef NDEBUG
-const bool ENABLE_VALIDATION_LAYER = false;
+#define ENABLE_VALIDATION_LAYERS false
 #else
-const bool ENABLE_VALIDATION_LAYER = true;
+#define ENABLE_VALIDATION_LAYERS true
 #endif
-
-static auto
-checkValidationLayerSupport() -> bool
-{
-  uint32_t layerCount = 0;
-  vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
-  std::vector<VkLayerProperties> availableLayers(layerCount);
-  vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
-  return any_of_range(validationLayers,
-                      availableLayers,
-                      [](const char* lhs, const VkLayerProperties& rhs) {
-                        return strcmp(lhs, rhs.layerName) == 0;
-                      });
-}
-
-///////////////////////////////
-//////                   //////
-//////  VULKAN TUTORIAL  //////
-//////                   //////
-///////////////////////////////
 
 // List of device extensions we need.
 const std::vector<const char*> deviceExtensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
-
-// Helper function to create `VkDebugUtilsMessengerEXT`.
-static auto
-CreateDebugUtilsMessengerEXT(
-  const VkInstance& instance,
-  const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo,
-  const VkAllocationCallbacks* pAllocator,
-  VkDebugUtilsMessengerEXT* pDebugMessenger) -> VkResult
-{
-  // The function `vkCreateDebugUtilsMessengerEXT` is an extension.
-  // Therefore, we have to find the address of this function ourselves.
-  auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-    instance, "vkCreateDebugUtilsMessengerEXT");
-  if (func != nullptr) {
-    return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-  } else {
-    return VK_ERROR_EXTENSION_NOT_PRESENT;
-  }
-}
-
-// Helper function to find and execute `vkDestroyDebugUtilsMessengerEXT`.
-static void
-DestroyDebugUtilsMessengerEXT(const VkInstance& instance,
-                              const VkDebugUtilsMessengerEXT& debugMessenger,
-                              const VkAllocationCallbacks* pAllocator)
-{
-  auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
-    instance, "vkDestroyDebugUtilsMessengerEXT");
-  if (func != nullptr) {
-    func(instance, debugMessenger, pAllocator);
-  }
-}
-
-// Get Vulkan extennsions required for/by:
-//  1.  GLFW.
-//  2.  Debugging validation layers.
-static auto
-getRequiredExtensions() -> std::vector<const char*>
-{
-  uint32_t glfwExtensionCount = 0;
-  const char** glfwExtensions;
-  glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-  std::vector<const char*> extensions(glfwExtensions,
-                                      glfwExtensions + glfwExtensionCount);
-
-  if (ENABLE_VALIDATION_LAYER) {
-    extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-  }
-
-  return extensions;
-}
-
-std::ostream&
-operator<<(std::ostream& os, const VkPhysicalDeviceType& obj)
-{
-  switch (obj) {
-    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_CPU: {
-      os << "VK_PHYSICAL_DEVICE_TYPE_CPU";
-      break;
-    }
-    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: {
-      os << "VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU";
-      break;
-    }
-    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: {
-      os << "VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU";
-      break;
-    }
-    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: {
-      os << "VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU";
-      break;
-    }
-    case VkPhysicalDeviceType::VK_PHYSICAL_DEVICE_TYPE_OTHER: {
-      os << "VK_PHYSICAL_DEVICE_TYPE_OTHER";
-      break;
-    }
-    default: {
-      throw std::runtime_error("Unknown VkPhysicalDeviceType:" + obj);
-    }
-  }
-  return os;
-}
-
-static void
-printDeviceProperties(const VkPhysicalDevice& device)
-{
-  VkPhysicalDeviceProperties deviceProperties{};
-  vkGetPhysicalDeviceProperties(device, &deviceProperties);
-  std::cout << "device apiVersion:" << deviceProperties.apiVersion << "\n";
-  std::cout << "device deviceID:" << deviceProperties.deviceID << "\n";
-  std::cout << "device deviceName:" << deviceProperties.deviceName << "\n";
-  std::cout << "device deviceType:" << deviceProperties.deviceType << "\n";
-  std::cout << "device driverVersion:" << deviceProperties.driverVersion
-            << "\n";
-  // TODO: Implement the overload for this
-  // std::cout << "device limits:" << deviceProperties.limits << "\n";
-  // TODO: Figure out how to print this.
-  // std::cout << "device pipelineCacheUUID:" <<
-  // deviceProperties.pipelineCacheUUID
-  //          << "\n";
-  // TODO: Implement the overload for this
-  // std::cout << "device sparseProperties:" <<
-  // deviceProperties.sparseProperties
-  //          << "\n";
-  std::cout << "device vendorID:" << deviceProperties.vendorID << "\n";
-}
-
-static void
-printDeviceFeatures(const VkPhysicalDevice& device)
-{
-  VkPhysicalDeviceFeatures deviceFeatures{};
-  vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-  (void)deviceFeatures; // Silence unused warning
-  // TODO: Implement the print here...
-}
-
-// Struct for querying details of swap chain support.
-struct SwapChainSupportDetails
-{
-  VkSurfaceCapabilitiesKHR capabilities;
-  std::vector<VkSurfaceFormatKHR> formats;
-  std::vector<VkPresentModeKHR> presentModes;
-};
-
-// Helper struct to find queue families.
-struct QueueFamilyIndices
-{
-  std::optional<uint32_t> graphicsFamily;
-  std::optional<uint32_t> presentFamily;
-
-  auto isComplete() const -> bool
-  {
-    return graphicsFamily.has_value() && presentFamily.has_value();
-  }
-};
-
-// Loading SPIR-V shaders
-static std::vector<char>
-readFile(const std::string& filename)
-{
-  std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-  if (!file.is_open()) {
-    throw std::runtime_error("failed to open file!");
-  }
-
-  std::size_t fileSize = static_cast<std::size_t>(file.tellg());
-  std::vector<char> buffer(fileSize);
-
-  file.seekg(0);
-  file.read(buffer.data(), fileSize);
-
-  file.close();
-  return buffer;
-}
 
 constexpr uint32_t WIDTH = 800;
 constexpr uint32_t HEIGHT = 600;
@@ -509,6 +217,8 @@ private:
 
         vertex.color = { 1.0f, 1.0f, 1.0f };
 
+#define HASH true
+
 #ifdef HASH
         if (uniqueVertices.count(vertex) == 0) {
           uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
@@ -550,12 +260,6 @@ private:
                                  VK_FORMAT_D24_UNORM_S8_UINT },
                                VK_IMAGE_TILING_OPTIMAL,
                                VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-  }
-
-  bool hasStencilComponent(VkFormat format)
-  {
-    return format == VK_FORMAT_D32_SFLOAT_S8_UINT ||
-           format == VK_FORMAT_D24_UNORM_S8_UINT;
   }
 
   void createDepthResources()
@@ -1250,6 +954,7 @@ private:
   void createCommandBuffers()
   {
     commandBuffers.resize(swapChainFramebuffers.size());
+
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.commandPool = commandPool;
@@ -1414,9 +1119,6 @@ private:
     renderPassInfo.pAttachments = attachments.data();
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
-
     renderPassInfo.dependencyCount = 1;
     renderPassInfo.pDependencies = &dependency;
 
@@ -1681,7 +1383,7 @@ private:
 
   void setupDebugMessenger()
   {
-    if (!ENABLE_VALIDATION_LAYER)
+    if (!ENABLE_VALIDATION_LAYERS)
       return;
 
     // Details about how we want to set up the debug messenger callback.
@@ -1868,9 +1570,9 @@ private:
     vkDestroyDevice(device, nullptr);
 
     // Free validation layer debugger.
-    if (ENABLE_VALIDATION_LAYER) {
-      DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-    }
+#ifdef ENABLE_VALIDATION_LAYERS
+    DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+#endif
 
     // Free Vulkan surface and instance.
     vkDestroySurfaceKHR(instance, surface, nullptr);
@@ -1923,7 +1625,8 @@ private:
   {
 
     // If validation layer is enabled, check if they are all supported.
-    if (ENABLE_VALIDATION_LAYER && !checkValidationLayerSupport()) {
+    if (ENABLE_VALIDATION_LAYERS &&
+        !checkValidationLayerSupport(validationLayers)) {
       throw std::runtime_error(
         "validation layers requested, but not available!");
     }
@@ -1959,16 +1662,16 @@ private:
 
     // If validation layer is enabled, we have to specify at creation.
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-    if (ENABLE_VALIDATION_LAYER) {
-      createInfo.enabledLayerCount =
-        static_cast<uint32_t>(validationLayers.size());
-      createInfo.ppEnabledLayerNames = validationLayers.data();
-      populateDebugMessengerCreateInfo(debugCreateInfo);
-      createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-    } else {
-      createInfo.enabledLayerCount = 0;
-      createInfo.pNext = nullptr;
-    }
+#ifdef ENABLE_VALIDATION_LAYERS
+    createInfo.enabledLayerCount =
+      static_cast<uint32_t>(validationLayers.size());
+    createInfo.ppEnabledLayerNames = validationLayers.data();
+    populateDebugMessengerCreateInfo(debugCreateInfo);
+    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
+#else
+    createInfo.enabledLayerCount = 0;
+    createInfo.pNext = nullptr;
+#endif
 
     // We've now specified everything Vulkan needs to create an instance.
     // We can finally issue the vkCreateInstance call.
@@ -1992,12 +1695,12 @@ private:
     }
 
     // Checks that extensions required by GLFW are all supported.
-    auto checks_all =
-      any_of_range(glfwExtensions,
-                   extensions,
-                   [](const std::string lhs, const VkExtensionProperties& rhs) {
-                     return lhs == rhs.extensionName;
-                   });
+    auto checks_all = any_of_range(
+      glfwExtensions,
+      extensions,
+      [](const std::string& lhs, const VkExtensionProperties& rhs) {
+        return lhs == rhs.extensionName;
+      });
     if (!checks_all) {
       throw std::runtime_error("failed obtain all required extensions!");
     }
@@ -2041,11 +1744,11 @@ private:
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
-    for (const VkPhysicalDevice& device : devices) {
-      printDeviceProperties(device);
-      printDeviceFeatures(device);
-      if (isDeviceSuitable(device)) {
-        physicalDevice = device;
+    for (const VkPhysicalDevice& sample : devices) {
+      printDeviceProperties(sample);
+      printDeviceFeatures(sample);
+      if (isDeviceSuitable(sample)) {
+        physicalDevice = sample;
         break;
       }
     }
@@ -2086,7 +1789,7 @@ private:
     // vkGetPhysicalDeviceProperties(device, &deviceProperties);
     vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
-    QueueFamilyIndices indices = findQueueFamilies(device);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(device);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
 
     // We must require swap chain support.
@@ -2097,49 +1800,8 @@ private:
                           !swapChainSupport.presentModes.empty();
     }
 
-    return indices.isComplete() && extensionsSupported && swapChainAdequate &&
-           supportedFeatures.samplerAnisotropy;
-  }
-
-  // Choose the optimal swap chain.
-  // In particular, we have to consider the following:
-  // 1. Surface format (color depth).
-  // 2. Presentation mode (conditions for "swapping" images to the screen).
-  // 3. Swap extent (resolution of images in swap chain).
-  VkSurfaceFormatKHR chooseSwapSurfaceFormat(
-    const std::vector<VkSurfaceFormatKHR>& availableFormats)
-  {
-    // NOTE: Read about the actual difference betweeen color space and color
-    // format.
-    // Choose SRGB color space:
-    // https://stackoverflow.com/questions/12524623/what-are-the-practical-differences-when-working-with-colors-in-a-linear-vs-a-no
-    // Because of this, we choose SRGB color format
-    for (const auto& availableFormat : availableFormats) {
-      if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-          availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-        return availableFormat;
-      }
-    }
-
-    // TODO: This operation might fail.
-    // Every caller to this function must supply a vector of size at least 1.
-    return availableFormats.front();
-  }
-
-  // Choose available presentation mode.
-  // If possible, we would like to have `VK_PRESENT_MODE_MAILBOX_KHR` to have
-  // triple buffering. Defaults to `VK_PRESENT_MODE_FIFO_KHR` which is
-  // guaranteed to be supported.
-  VkPresentModeKHR chooseSwapPresentMode(
-    const std::vector<VkPresentModeKHR>& availablePresentModes)
-  {
-    for (const VkPresentModeKHR& availablePresentMode : availablePresentModes) {
-      if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-        return availablePresentMode;
-      }
-    }
-
-    return VK_PRESENT_MODE_FIFO_KHR;
+    return queueFamilyIndices.isComplete() && extensionsSupported &&
+           swapChainAdequate && supportedFeatures.samplerAnisotropy;
   }
 
   // Choose the swap extent.
@@ -2198,14 +1860,14 @@ private:
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-    uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(),
-                                      indices.presentFamily.value() };
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
+    uint32_t familyIndices[] = { queueFamilyIndices.graphicsFamily.value(),
+                                 queueFamilyIndices.presentFamily.value() };
 
-    if (indices.graphicsFamily != indices.presentFamily) {
+    if (queueFamilyIndices.graphicsFamily != queueFamilyIndices.presentFamily) {
       createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
       createInfo.queueFamilyIndexCount = 2;
-      createInfo.pQueueFamilyIndices = queueFamilyIndices;
+      createInfo.pQueueFamilyIndices = familyIndices;
     } else {
       createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
       createInfo.queueFamilyIndexCount = 0;     // Optional
@@ -2243,7 +1905,7 @@ private:
 
   auto findQueueFamilies(const VkPhysicalDevice& device) -> QueueFamilyIndices
   {
-    QueueFamilyIndices indices;
+    QueueFamilyIndices queueFamilyIndices;
     // Assign index to queue families that could be found
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(
@@ -2258,36 +1920,38 @@ private:
     int i = 0;
     for (const VkQueueFamilyProperties& queueFamily : queueFamilies) {
       if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-        indices.graphicsFamily = i;
+        queueFamilyIndices.graphicsFamily = i;
       }
 
       VkBool32 presentSupport = false;
       vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
       if (presentSupport) {
-        indices.presentFamily = i;
+        queueFamilyIndices.presentFamily = i;
       }
 
-      if (indices.isComplete()) {
+      if (queueFamilyIndices.isComplete()) {
         break;
       }
 
       i++;
     }
-    return indices;
+    return queueFamilyIndices;
   }
 
   void createLogicalDevice()
   {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
 
     // NOTE: We do this in case the 2 queues are different.
     // That is, one queue is able to perform graphic computation and the other
     // is able to present the surface.
-    std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(),
-                                               indices.presentFamily.value() };
+    std::set<uint32_t> uniqueQueueFamilies = {
+      queueFamilyIndices.graphicsFamily.value(),
+      queueFamilyIndices.presentFamily.value()
+    };
 
     float queuePriority = 1.0f;
     for (uint32_t queueFamily : uniqueQueueFamilies) {
@@ -2312,22 +1976,24 @@ private:
     createInfo.enabledExtensionCount =
       static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    if (ENABLE_VALIDATION_LAYER) {
-      createInfo.enabledLayerCount =
-        static_cast<uint32_t>(validationLayers.size());
-      createInfo.ppEnabledLayerNames = validationLayers.data();
-    } else {
-      createInfo.enabledLayerCount = 0;
-      createInfo.ppEnabledLayerNames = nullptr;
-    }
+#ifdef ENABLE_VALIDATION_LAYERS
+    createInfo.enabledLayerCount =
+      static_cast<uint32_t>(validationLayers.size());
+    createInfo.ppEnabledLayerNames = validationLayers.data();
+#else
+    createInfo.enabledLayerCount = 0;
+    createInfo.ppEnabledLayerNames = nullptr;
+#endif
 
     if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) !=
         VK_SUCCESS) {
       throw std::runtime_error("failed to create logical device!");
     }
 
-    vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-    vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
+    vkGetDeviceQueue(
+      device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+    vkGetDeviceQueue(
+      device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
   }
 };
 

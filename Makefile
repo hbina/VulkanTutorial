@@ -7,6 +7,7 @@ LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 VulkanTest: VulkanTutorial/main.cpp
 	mkdir -p bin
 	g++ $(CFLAGS) -o bin/VulkanTutorial VulkanTutorial/main.cpp -g $(LDFLAGS)
+	./compile_shader.sh
 
 .PHONY: test clean
 

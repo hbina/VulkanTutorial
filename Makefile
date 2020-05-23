@@ -1,7 +1,8 @@
 CURRENT_DIR = $(shell pwd)
 
 STB_INCLUDE_PATH = $(CURRENT_DIR)/libraries/stb
-CFLAGS = -std=c++17 -I$(VULKAN_SDK_PATH)/vulkan/include -Wall -I$(STB_INCLUDE_PATH)
+TINYOBJ_INCLUDE_PATH = $(CURRENT_DIR)/libraries/tinyobjloader
+CFLAGS = -std=c++17 -I$(VULKAN_SDK_PATH)/vulkan/include -Wall -I$(STB_INCLUDE_PATH) -I$(TINYOBJ_INCLUDE_PATH)
 LDFLAGS = -L$(VULKAN_SDK_PATH)/lib `pkg-config --static --libs glfw3` -lvulkan
 
 VulkanTest: VulkanTutorial/main.cpp

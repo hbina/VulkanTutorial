@@ -1507,8 +1507,8 @@ private:
       return;
 
     // Details about how we want to set up the debug messenger callback.
-    VkDebugUtilsMessengerCreateInfoEXT createInfo{};
-    populateDebugMessengerCreateInfo(createInfo);
+    VkDebugUtilsMessengerCreateInfoEXT createInfo =
+      getDebugMessengerCreateInfo();
 
     if (CreateDebugUtilsMessengerEXT(
           instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
@@ -1778,14 +1778,13 @@ private:
     createInfo.ppEnabledExtensionNames = glfwExtensions.data();
 
     // If validation layer is enabled, we have to specify at creation.
-    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
+    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo =
+      getDebugMessengerCreateInfo();
 
     if (ENABLE_VALIDATION_LAYERS) {
       createInfo.enabledLayerCount =
         static_cast<uint32_t>(validationLayers.size());
       createInfo.ppEnabledLayerNames = validationLayers.data();
-
-      populateDebugMessengerCreateInfo(debugCreateInfo);
       createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
     } else {
       createInfo.enabledLayerCount = 0;

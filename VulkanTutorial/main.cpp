@@ -1149,7 +1149,7 @@ private:
 
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
+    poolInfo.queueFamilyIndex = queueFamilyIndices.getGraphicsFamily();
     // TODO: There ought to be a default value for this?
     poolInfo.flags = 0; // Optional
 
@@ -1928,10 +1928,11 @@ private:
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
     QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-    uint32_t familyIndices[] = { queueFamilyIndices.graphicsFamily.value(),
-                                 queueFamilyIndices.presentFamily.value() };
+    uint32_t familyIndices[] = { queueFamilyIndices.getGraphicsFamily(),
+                                 queueFamilyIndices.getPresentFamily() };
 
-    if (queueFamilyIndices.graphicsFamily != queueFamilyIndices.presentFamily) {
+    if (queueFamilyIndices.getGraphicsFamily() !=
+        queueFamilyIndices.getPresentFamily()) {
       createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
       createInfo.queueFamilyIndexCount = 2;
       createInfo.pQueueFamilyIndices = familyIndices;
@@ -1987,14 +1988,14 @@ private:
     int i = 0;
     for (const VkQueueFamilyProperties& queueFamily : queueFamilies) {
       if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-        queueFamilyIndices.graphicsFamily = i;
+        queueFamilyIndices.assignGraphicsFamily(i);
       }
 
       VkBool32 presentSupport = false;
       vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
 
       if (presentSupport) {
-        queueFamilyIndices.presentFamily = i;
+        queueFamilyIndices.assignPresentFamily(i);
       }
 
       if (queueFamilyIndices.isComplete()) {
@@ -2016,8 +2017,8 @@ private:
     // That is, one queue is able to perform graphic computation and the other
     // is able to present the surface.
     std::set<uint32_t> uniqueQueueFamilies = {
-      queueFamilyIndices.graphicsFamily.value(),
-      queueFamilyIndices.presentFamily.value()
+      queueFamilyIndices.getGraphicsFamily(),
+      queueFamilyIndices.getPresentFamily()
     };
 
     float queuePriority = 1.0f;
@@ -2059,9 +2060,9 @@ private:
     }
 
     vkGetDeviceQueue(
-      device, queueFamilyIndices.graphicsFamily.value(), 0, &graphicsQueue);
+      device, queueFamilyIndices.getGraphicsFamily(), 0, &graphicsQueue);
     vkGetDeviceQueue(
-      device, queueFamilyIndices.presentFamily.value(), 0, &presentQueue);
+      device, queueFamilyIndices.getPresentFamily(), 0, &presentQueue);
   }
 };
 

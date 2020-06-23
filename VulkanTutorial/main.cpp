@@ -65,16 +65,18 @@ class HelloTriangleApplication
   // General
   VkInstance instance = VK_NULL_HANDLE;
   VkSurfaceKHR surface = VK_NULL_HANDLE;
-  VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
   VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
   VkDevice device = VK_NULL_HANDLE;
+
+  // Debugger
+  VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 
   // Queues
   VkQueue graphicsQueue = VK_NULL_HANDLE;
   VkQueue presentQueue = VK_NULL_HANDLE;
 
   // Swapchain
-  VkSwapchainKHR swapChain{};
+  VkSwapchainKHR swapChain = VK_NULL_HANDLE;
   std::vector<VkImage> swapChainImages;
   VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
   VkExtent2D swapChainExtent = { 0, 0 };
@@ -82,21 +84,21 @@ class HelloTriangleApplication
   std::vector<VkFramebuffer> swapChainFramebuffers;
 
   // Pipeline
-  VkRenderPass renderPass{};
-  VkDescriptorSetLayout descriptorSetLayout{};
-  VkPipelineLayout pipelineLayout{};
-  VkPipeline graphicsPipeline{};
+  VkRenderPass renderPass = VK_NULL_HANDLE;
+  VkDescriptorSetLayout descriptorSetLayout = VK_NULL_HANDLE;
+  VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+  VkPipeline graphicsPipeline = VK_NULL_HANDLE;
 
   // Commands
-  VkCommandPool commandPool{};
+  VkCommandPool commandPool = VK_NULL_HANDLE;
   std::vector<VkCommandBuffer> commandBuffers;
 
   // Buffers
   std::vector<Vertex> vertices;
   std::vector<uint32_t> indices;
   VkBuffer vertexBuffer;
-  VkDeviceMemory vertexBufferMemory;
-  VkBuffer indexBuffer;
+  VkDeviceMemory vertexBufferMemory = VK_NULL_HANDLE;
+  VkBuffer indexBuffer = VK_NULL_HANDLE;
   VkDeviceMemory indexBufferMemory;
   std::vector<VkBuffer> uniformBuffers;
   std::vector<VkDeviceMemory> uniformBuffersMemory;
@@ -109,20 +111,20 @@ class HelloTriangleApplication
   std::size_t currentFrame = 0;
 
   // UBO Descriptors
-  VkDescriptorPool descriptorPool;
+  VkDescriptorPool descriptorPool = VK_NULL_HANDLE;
   std::vector<VkDescriptorSet> descriptorSets;
 
   // Texture
   uint32_t mipLevels;
-  VkImage textureImage;
-  VkDeviceMemory textureImageMemory;
-  VkImageView textureImageView;
-  VkSampler textureSampler;
+  VkImage textureImage = VK_NULL_HANDLE;
+  VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
+  VkImageView textureImageView = VK_NULL_HANDLE;
+  VkSampler textureSampler = VK_NULL_HANDLE;
 
   // Depth
-  VkImage depthImage;
-  VkDeviceMemory depthImageMemory;
-  VkImageView depthImageView;
+  VkImage depthImage = VK_NULL_HANDLE;
+  VkDeviceMemory depthImageMemory = VK_NULL_HANDLE;
+  VkImageView depthImageView = VK_NULL_HANDLE;
 
   // Explicitly handle resizing
   bool framebufferResized = false;
@@ -1503,6 +1505,8 @@ private:
 
   void setupDebugMessenger()
   {
+    // TOOD: Should really consider refactoring Debug Messenger into its own
+    // class so we don't have to intertwine it in this mess.
     if (!ENABLE_VALIDATION_LAYERS)
       return;
 
@@ -1751,21 +1755,15 @@ private:
     // Fill in a struct with some information about our application.
     // This data is technically optional, but it may provide some useful
     // information to the driver in order to optimize our specific application.
-    VkApplicationInfo appInfo{};
-    appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "Hello Triangle";
-    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.pEngineName = "No Engine";
-    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_0;
-
-    // tells the Vulkan driver which global extensions and validation layers we
-    // want to use. Global here means that they apply to the entire program and
-    // not a specific device. Meaning it will become clear in the next few
-    // chapters.
-    VkInstanceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    createInfo.pApplicationInfo = &appInfo;
+    VkApplicationInfo appInfo = {
+      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+      .pNext = nullptr,
+      .pApplicationName = "Hello Triangle",
+      .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+      .pEngineName = "No Engine",
+      .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+      .apiVersion = VK_API_VERSION_1_0,
+    };
 
     // Specify the desired global extensions.
     // Vulkan is a platform agnostic API, which means that you need an extension
@@ -1774,22 +1772,50 @@ private:
     // the struct.
     auto glfwExtensions = getRequiredExtensions(ENABLE_VALIDATION_LAYERS);
     auto glfwExtensionCount = static_cast<uint32_t>(glfwExtensions.size());
-    createInfo.enabledExtensionCount = glfwExtensionCount;
-    createInfo.ppEnabledExtensionNames = glfwExtensions.data();
 
     // If validation layer is enabled, we have to specify at creation.
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo =
       getDebugMessengerCreateInfo();
 
-    if (ENABLE_VALIDATION_LAYERS) {
-      createInfo.enabledLayerCount =
-        static_cast<uint32_t>(validationLayers.size());
-      createInfo.ppEnabledLayerNames = validationLayers.data();
-      createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-    } else {
-      createInfo.enabledLayerCount = 0;
-      createInfo.pNext = nullptr;
-    }
+    struct InstanceValidationLayer
+    {
+      uint32_t enabledLayerCount = 0;
+      const char* const* ppEnabledLayerNames = nullptr;
+      const void* pNext = nullptr;
+    };
+
+    InstanceValidationLayer instanceValidationLayers =
+      [](const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo,
+         const std::vector<const char*>& validationLayers) {
+        if (ENABLE_VALIDATION_LAYERS) {
+          return InstanceValidationLayer{
+            .enabledLayerCount = static_cast<uint32_t>(validationLayers.size()),
+            .ppEnabledLayerNames = validationLayers.data(),
+            .pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo,
+          };
+        } else {
+          return InstanceValidationLayer{
+            .enabledLayerCount = 0,
+            .ppEnabledLayerNames = nullptr,
+            .pNext = nullptr,
+          };
+        }
+      }(debugCreateInfo, validationLayers);
+
+    // tells the Vulkan driver which global extensions and validation layers we
+    // want to use. Global here means that they apply to the entire program and
+    // not a specific device. Meaning it will become clear in the next few
+    // chapters.
+    VkInstanceCreateInfo createInfo = {
+      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+      .pNext = instanceValidationLayers.pNext,
+      .flags = 0,
+      .pApplicationInfo = &appInfo,
+      .enabledLayerCount = instanceValidationLayers.enabledLayerCount,
+      .ppEnabledLayerNames = instanceValidationLayers.ppEnabledLayerNames,
+      .enabledExtensionCount = glfwExtensionCount,
+      .ppEnabledExtensionNames = glfwExtensions.data(),
+    };
 
     // We've now specified everything Vulkan needs to create an instance.
     // We can finally issue the vkCreateInstance call.
@@ -1807,6 +1833,7 @@ private:
       throw std::runtime_error("failed to find GPUs with Vulkan support!");
     }
 
+    // FIXME: Something like this should really be a helper function, no?
     std::vector<VkPhysicalDevice> devices(deviceCount);
     vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
@@ -1824,26 +1851,6 @@ private:
     }
   }
 
-  auto checkDeviceExtensionSupport(VkPhysicalDevice device) -> bool
-  {
-    uint32_t extensionCount;
-    vkEnumerateDeviceExtensionProperties(
-      device, nullptr, &extensionCount, nullptr);
-
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(
-      device, nullptr, &extensionCount, availableExtensions.data());
-
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(),
-                                             deviceExtensions.end());
-
-    for (const auto& extension : availableExtensions) {
-      requiredExtensions.erase(extension.extensionName);
-    }
-
-    return requiredExtensions.empty();
-  }
-
   auto isDeviceSuitable(const VkPhysicalDevice& device) -> bool
   {
     // TODO: Implement the checks here...
@@ -1856,7 +1863,8 @@ private:
     vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
 
     QueueFamilyIndices queueFamilyIndices = findQueueFamilies(device);
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
+    bool extensionsSupported =
+      checkDeviceSupportAllRequiredExtensions(device, deviceExtensions);
 
     // We must require swap chain support.
     bool swapChainAdequate = false;

@@ -9,6 +9,8 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <set>
+#include <string>
 #include <vector>
 
 static constexpr auto
@@ -209,4 +211,27 @@ getDebugMessengerCreateInfo()
     .pUserData = nullptr, // Optional
   };
   return createInfo;
+}
+
+static auto
+checkDeviceSupportAllRequiredExtensions(
+  VkPhysicalDevice device,
+  const std::vector<const char*>& deviceExtensions) -> bool
+{
+  uint32_t extensionCount = 0;
+  vkEnumerateDeviceExtensionProperties(
+    device, nullptr, &extensionCount, nullptr);
+
+  std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+  vkEnumerateDeviceExtensionProperties(
+    device, nullptr, &extensionCount, availableExtensions.data());
+
+  std::set<std::string> requiredExtensions(deviceExtensions.begin(),
+                                           deviceExtensions.end());
+
+  for (const VkExtensionProperties& extension : availableExtensions) {
+    requiredExtensions.erase(extension.extensionName);
+  }
+
+  return requiredExtensions.empty();
 }

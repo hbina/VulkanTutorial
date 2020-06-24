@@ -21,7 +21,7 @@ hasStencilComponent(const VkFormat& format) -> bool
 }
 
 static auto
-checkValidationLayerSupport(const std::vector<const char*>& validationLayers)
+checkValidationLayersSupported(const std::vector<const char*>& validationLayers)
   -> bool
 {
   uint32_t layerCount = 0;
@@ -30,8 +30,10 @@ checkValidationLayerSupport(const std::vector<const char*>& validationLayers)
   std::vector<VkLayerProperties> availableLayers(layerCount);
   vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
 
-  return any_of_range(validationLayers,
-                      availableLayers,
+  return any_of_range(std::cbegin(validationLayers),
+                      std::cend(validationLayers),
+                      std::cbegin(availableLayers),
+                      std::cend(availableLayers),
                       [](const char* lhs, const VkLayerProperties& rhs) {
                         return strcmp(lhs, rhs.layerName) == 0;
                       });

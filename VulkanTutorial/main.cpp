@@ -115,7 +115,7 @@ class HelloTriangleApplication
   std::vector<VkDescriptorSet> descriptorSets;
 
   // Texture
-  uint32_t mipLevels;
+  uint32_t mipLevels = 0;
   VkImage textureImage = VK_NULL_HANDLE;
   VkDeviceMemory textureImageMemory = VK_NULL_HANDLE;
   VkImageView textureImageView = VK_NULL_HANDLE;
@@ -1704,41 +1704,6 @@ private:
     glfwTerminate();
   }
 
-  // TODO: This should probably be integrated as a builder pattern.
-  // Helper function to populate `SwapChainSupportDetails`
-  SwapChainSupportDetails querySwapChainSupport(const VkPhysicalDevice& device)
-  {
-    SwapChainSupportDetails details;
-
-    // Query basic surface capabilities.
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
-      device, surface, &details.capabilities);
-
-    // Query the supported surface formats.
-    uint32_t formatCount = 0;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(
-      device, surface, &formatCount, nullptr);
-
-    if (formatCount != 0) {
-      details.formats.resize(formatCount);
-      vkGetPhysicalDeviceSurfaceFormatsKHR(
-        device, surface, &formatCount, details.formats.data());
-    }
-
-    // Query supported presentations mode.
-    uint32_t presentModeCount = 0;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(
-      device, surface, &presentModeCount, nullptr);
-
-    if (presentModeCount != 0) {
-      details.presentModes.resize(presentModeCount);
-      vkGetPhysicalDeviceSurfacePresentModesKHR(
-        device, surface, &presentModeCount, details.presentModes.data());
-    }
-
-    return details;
-  }
-
   // The instance is the connection between your application and the Vulkan
   // library. Creating it involves specifying some details about your
   // application to the driver.
@@ -1747,7 +1712,7 @@ private:
 
     // If validation layer is enabled, check if they are all supported.
     if (ENABLE_VALIDATION_LAYERS &&
-        !checkValidationLayerSupport(validationLayers)) {
+        !checkValidationLayersSupported(validationLayers)) {
       throw std::runtime_error(
         "validation layers requested, but not available!");
     }
@@ -1755,7 +1720,7 @@ private:
     // Fill in a struct with some information about our application.
     // This data is technically optional, but it may provide some useful
     // information to the driver in order to optimize our specific application.
-    VkApplicationInfo appInfo = {
+    const VkApplicationInfo appInfo = {
       .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
       .pNext = nullptr,
       .pApplicationName = "Hello Triangle",
@@ -1770,11 +1735,12 @@ private:
     // to interface with the window system. GLFW has a handy built-in function
     // that returns the extension(s) it needs to do that which we can pass to
     // the struct.
-    auto glfwExtensions = getRequiredExtensions(ENABLE_VALIDATION_LAYERS);
-    auto glfwExtensionCount = static_cast<uint32_t>(glfwExtensions.size());
+    const auto glfwExtensions = getRequiredExtensions(ENABLE_VALIDATION_LAYERS);
+    const auto glfwExtensionCount =
+      static_cast<uint32_t>(glfwExtensions.size());
 
     // If validation layer is enabled, we have to specify at creation.
-    VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo =
+    const VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo =
       getDebugMessengerCreateInfo();
 
     struct InstanceValidationLayer
@@ -1784,7 +1750,7 @@ private:
       const void* pNext = nullptr;
     };
 
-    InstanceValidationLayer instanceValidationLayers =
+    const InstanceValidationLayer instanceValidationLayers =
       [](const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo,
          const std::vector<const char*>& validationLayers) {
         if (ENABLE_VALIDATION_LAYERS) {
@@ -1806,7 +1772,7 @@ private:
     // want to use. Global here means that they apply to the entire program and
     // not a specific device. Meaning it will become clear in the next few
     // chapters.
-    VkInstanceCreateInfo createInfo = {
+    const VkInstanceCreateInfo createInfo = {
       .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
       .pNext = instanceValidationLayers.pNext,
       .flags = 0,
@@ -1851,25 +1817,26 @@ private:
     }
   }
 
-  auto isDeviceSuitable(const VkPhysicalDevice& device) -> bool
+  auto isDeviceSuitable(const VkPhysicalDevice& p_physicalDevice) -> bool
   {
     // TODO: Implement the checks here...
     // One idea is to calculate scores and choose only the highest scoring
     // device.
     // Some code to get started...
     // VkPhysicalDeviceProperties deviceProperties{};
-    VkPhysicalDeviceFeatures supportedFeatures{};
+    VkPhysicalDeviceFeatures supportedFeatures = {};
     // vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    vkGetPhysicalDeviceFeatures(device, &supportedFeatures);
+    vkGetPhysicalDeviceFeatures(p_physicalDevice, &supportedFeatures);
 
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(device);
-    bool extensionsSupported =
-      checkDeviceSupportAllRequiredExtensions(device, deviceExtensions);
+    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(p_physicalDevice);
+    const bool extensionsSupported = checkDeviceSupportAllRequiredExtensions(
+      p_physicalDevice, deviceExtensions);
 
     // We must require swap chain support.
     bool swapChainAdequate = false;
     if (extensionsSupported) {
-      SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
+      const SwapChainSupportDetails swapChainSupport =
+        SwapChainSupportDetails::get(p_physicalDevice, surface);
       swapChainAdequate = !swapChainSupport.formats.empty() &&
                           !swapChainSupport.presentModes.empty();
     }
@@ -1907,15 +1874,16 @@ private:
   // Create swap chain.
   void createSwapChain()
   {
-    SwapChainSupportDetails swapChainSupport =
-      querySwapChainSupport(physicalDevice);
+    const SwapChainSupportDetails swapChainSupport =
+      SwapChainSupportDetails::get(physicalDevice, surface);
 
-    VkSurfaceFormatKHR surfaceFormat =
+    const VkSurfaceFormatKHR surfaceFormat =
       chooseSwapSurfaceFormat(swapChainSupport.formats);
-    VkPresentModeKHR presentMode =
+    const VkPresentModeKHR presentMode =
       chooseSwapPresentMode(swapChainSupport.presentModes);
-    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+    const VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
 
+    // TODO: There ought to be a way to avoid ITM here.
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
 
     if (swapChainSupport.capabilities.maxImageCount > 0 &&

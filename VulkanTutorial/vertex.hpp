@@ -9,6 +9,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
+#include <array>
+
 struct Vertex
 {
   // TODO : Alignment for this?

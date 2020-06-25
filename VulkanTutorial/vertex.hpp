@@ -9,6 +9,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
+#include "avk.hpp"
+
 #include <array>
 
 struct Vertex
@@ -20,11 +22,10 @@ struct Vertex
 
   static constexpr VkVertexInputBindingDescription getBindingDescription()
   {
-    const VkVertexInputBindingDescription bindingDescription = {
-      .binding = 0,
-      .stride = sizeof(Vertex),
-      .inputRate = VK_VERTEX_INPUT_RATE_VERTEX
-    };
+    VkVertexInputBindingDescription bindingDescription = {};
+    bindingDescription.binding = 0;
+    bindingDescription.stride = sizeof(Vertex);
+    bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
     return bindingDescription;
   }
 
@@ -33,19 +34,12 @@ struct Vertex
   {
     const std::array<VkVertexInputAttributeDescription, 3>
       attributeDescriptions = {
-        VkVertexInputAttributeDescription{ .location = 0,
-                                           .binding = 0,
-                                           .format = VK_FORMAT_R32G32B32_SFLOAT,
-                                           .offset = offsetof(Vertex, pos) },
-        VkVertexInputAttributeDescription{ .location = 1,
-                                           .binding = 0,
-                                           .format = VK_FORMAT_R32G32_SFLOAT,
-                                           .offset = offsetof(Vertex, color) },
-        VkVertexInputAttributeDescription{ .location = 2,
-                                           .binding = 0,
-                                           .format = VK_FORMAT_R32G32_SFLOAT,
-                                           .offset =
-                                             offsetof(Vertex, texCoord) }
+        avk::VertexInputAttributeDescription::create(
+          0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, pos)),
+        avk::VertexInputAttributeDescription::create(
+          1, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, color)),
+        avk::VertexInputAttributeDescription::create(
+          2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, texCoord))
       };
     return attributeDescriptions;
   }

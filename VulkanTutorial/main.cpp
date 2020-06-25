@@ -9,6 +9,7 @@
 #include <GLFW/glfw3.h>
 
 #include "helper_algorithms.hpp"
+#include "instance_validation_layer.hpp"
 #include "ostream_overload.hpp"
 #include "queue_family_indices.hpp"
 #include "static_functions.hpp"
@@ -1720,15 +1721,13 @@ private:
     // Fill in a struct with some information about our application.
     // This data is technically optional, but it may provide some useful
     // information to the driver in order to optimize our specific application.
-    const VkApplicationInfo appInfo = {
-      .sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
-      .pNext = nullptr,
-      .pApplicationName = "Hello Triangle",
-      .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
-      .pEngineName = "No Engine",
-      .engineVersion = VK_MAKE_VERSION(1, 0, 0),
-      .apiVersion = VK_API_VERSION_1_0,
-    };
+    const VkApplicationInfo appInfo =
+      avk::ApplicationInfo::create(nullptr,
+                                   "Hello Triangle",
+                                   VK_MAKE_VERSION(1, 0, 0),
+                                   "No Engine",
+                                   VK_MAKE_VERSION(1, 0, 0),
+                                   VK_API_VERSION_1_0);
 
     // Specify the desired global extensions.
     // Vulkan is a platform agnostic API, which means that you need an extension
@@ -1743,45 +1742,26 @@ private:
     const VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo =
       getDebugMessengerCreateInfo();
 
-    struct InstanceValidationLayer
-    {
-      uint32_t enabledLayerCount = 0;
-      const char* const* ppEnabledLayerNames = nullptr;
-      const void* pNext = nullptr;
-    };
-
-    const InstanceValidationLayer instanceValidationLayers =
-      [](const VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo,
-         const std::vector<const char*>& validationLayers) {
-        if (ENABLE_VALIDATION_LAYERS) {
-          return InstanceValidationLayer{
-            .enabledLayerCount = static_cast<uint32_t>(validationLayers.size()),
-            .ppEnabledLayerNames = validationLayers.data(),
-            .pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo,
-          };
-        } else {
-          return InstanceValidationLayer{
-            .enabledLayerCount = 0,
-            .ppEnabledLayerNames = nullptr,
-            .pNext = nullptr,
-          };
-        }
-      }(debugCreateInfo, validationLayers);
+    const InstanceValidationLayer instanceValidationLayers = [&]() {
+      if (ENABLE_VALIDATION_LAYERS) {
+        return InstanceValidationLayer::create(
+          static_cast<const VkDebugUtilsMessengerCreateInfoEXT*>(
+            &debugCreateInfo));
+      } else {
+        return InstanceValidationLayer::create();
+      };
+    }();
 
     // tells the Vulkan driver which global extensions and validation layers we
     // want to use. Global here means that they apply to the entire program and
     // not a specific device. Meaning it will become clear in the next few
     // chapters.
-    const VkInstanceCreateInfo createInfo = {
-      .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-      .pNext = instanceValidationLayers.pNext,
-      .flags = 0,
-      .pApplicationInfo = &appInfo,
-      .enabledLayerCount = instanceValidationLayers.enabledLayerCount,
-      .ppEnabledLayerNames = instanceValidationLayers.ppEnabledLayerNames,
-      .enabledExtensionCount = glfwExtensionCount,
-      .ppEnabledExtensionNames = glfwExtensions.data(),
-    };
+    const VkInstanceCreateInfo createInfo =
+      avk::InstanceCreateInfo::create(instanceValidationLayers.pNext,
+                                      0,
+                                      &appInfo,
+                                      validationLayers,
+                                      glfwExtensions);
 
     // We've now specified everything Vulkan needs to create an instance.
     // We can finally issue the vkCreateInstance call.
@@ -1828,7 +1808,8 @@ private:
     // vkGetPhysicalDeviceProperties(device, &deviceProperties);
     vkGetPhysicalDeviceFeatures(p_physicalDevice, &supportedFeatures);
 
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(p_physicalDevice);
+    const QueueFamilyIndices queueFamilyIndices =
+      findQueueFamilies(p_physicalDevice);
     const bool extensionsSupported = checkDeviceSupportAllRequiredExtensions(
       p_physicalDevice, deviceExtensions);
 
@@ -1946,6 +1927,7 @@ private:
     swapChainExtent = extent;
   }
 
+  // FIXME: This should be a static member function in QueueFamilyIndices.
   auto findQueueFamilies(const VkPhysicalDevice& device) -> QueueFamilyIndices
   {
     QueueFamilyIndices queueFamilyIndices;

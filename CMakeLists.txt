@@ -24,7 +24,7 @@ find_package(Vulkan REQUIRED FATAL_ERROR)
 
 target_link_libraries(VulkanTutorial PRIVATE glm)
 target_link_libraries(VulkanTutorial PRIVATE glfw)
-target_link_libraries(VulkanTutorial PRIVATE vulkan)
+target_link_libraries(VulkanTutorial PRIVATE Vulkan::Vulkan)
 
 target_include_directories(VulkanTutorial PRIVATE ${CMAKE_SOURCE_DIR}/libraries/Vulkan-Headers/include)
 target_include_directories(VulkanTutorial PRIVATE ${CMAKE_SOURCE_DIR}/libraries/tinyobjloader)

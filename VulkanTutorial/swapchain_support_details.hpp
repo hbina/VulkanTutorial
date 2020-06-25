@@ -5,6 +5,7 @@
 #include <vector>
 
 // Struct for querying details of swap chain support.
+// TODO: Should this be inside avk?
 struct SwapChainSupportDetails
 {
 
@@ -48,10 +49,6 @@ struct SwapChainSupportDetails
         physicalDevice, surface, &presentModeCount, presentModes.data());
     }
 
-    return SwapChainSupportDetails{
-      .capabilities = capabilities,
-      .formats = formats,
-      .presentModes = presentModes,
-    };
+    return SwapChainSupportDetails{ capabilities, formats, presentModes };
   }
 };
